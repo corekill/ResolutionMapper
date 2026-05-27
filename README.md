@@ -26,11 +26,12 @@ Text smoothing is limited by macOS downscaling and the physical panel. Try less 
 swift build --configuration debug --product ResolutionMapper
 ```
 
-To create a local app bundle manually:
+To create a local universal app bundle and DMG installer:
 
 ```sh
 CONFIG=debug scripts/build-release.sh
 open "dist/Resolution Mapper.app"
+open "dist/ResolutionMapper-v1.0-macos-universal.dmg"
 ```
 
 ## Attribution
