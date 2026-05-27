@@ -1,5 +1,7 @@
 # Resolution Mapper
 
+[![Support Resolution Mapper on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/corekill)
+
 Resolution Mapper is a small macOS utility for changing, overriding, and mapping external monitor resolution through a virtual display. It was built for stubborn Full HD monitors that feel too large in macOS, but it can be used with any detected external display.
 
 It creates a virtual display, mirrors a selected monitor to it, and stores profiles per monitor using vendor, model, and serial identifiers.
@@ -24,7 +26,9 @@ Get the latest universal macOS installer from the [Releases](https://github.com/
 
 ## Support
 
-Created by [corekill](https://github.com/corekill). If Resolution Mapper helps you, you can support the project on [Ko-fi](https://ko-fi.com/corekill).
+Created by [corekill](https://github.com/corekill).
+
+[![Support Resolution Mapper on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/corekill)
 
 ## Notes
 
