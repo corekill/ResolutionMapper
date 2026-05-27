@@ -1,0 +1,47 @@
+# Resolution Mapper
+
+Resolution Mapper is a small macOS utility for mapping a physical external monitor to a virtual display with a custom resolution. It was built for stubborn Full HD monitors that feel too large in macOS, but it can be used with any detected external display.
+
+It creates a virtual display, mirrors a selected monitor to it, and stores profiles per monitor using vendor, model, and serial identifiers.
+
+## Features
+
+- Create virtual displays with custom resolutions
+- Map any connected external monitor to a selected virtual resolution
+- Store resolution profiles per monitor identity
+- Remove virtual displays automatically when the physical monitor is disconnected
+- Restore the saved mapping when the monitor is connected again
+- Optional launch-at-login restoration
+- Presets for QHD, soft QHD, wide workbench, 4K downsample, and native FHD
+
+## Notes
+
+Resolution Mapper uses macOS virtual display APIs. These APIs are not part of a stable public app distribution contract, so behavior may change after macOS updates.
+
+Text smoothing is limited by macOS downscaling and the physical panel. Try less aggressive presets such as `Soft QHD` when text looks jagged.
+
+## Build
+
+```sh
+swift build --configuration debug --product ResolutionMapper
+```
+
+To create a local app bundle manually:
+
+```sh
+mkdir -p "Resolution Mapper.app/Contents/MacOS"
+cp .build/debug/ResolutionMapper "Resolution Mapper.app/Contents/MacOS/ResolutionMapper"
+cp Info.plist "Resolution Mapper.app/Contents/Info.plist"
+xattr -cr "Resolution Mapper.app"
+codesign --force --sign - "Resolution Mapper.app"
+open "Resolution Mapper.app"
+```
+
+## Attribution
+
+The `VirtualDisplayBridge` target is derived from [SimpleDisplay](https://github.com/SamuelRioTz/SimpleDisplay), which is licensed under GPLv3.
+
+## License
+
+GPLv3. See [LICENSE](LICENSE).
+
