@@ -10,6 +10,8 @@
   <string>local.codex.ResolutionMapper</string>
   <key>CFBundleName</key>
   <string>Resolution Mapper</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

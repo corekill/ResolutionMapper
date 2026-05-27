@@ -29,12 +29,8 @@ swift build --configuration debug --product ResolutionMapper
 To create a local app bundle manually:
 
 ```sh
-mkdir -p "Resolution Mapper.app/Contents/MacOS"
-cp .build/debug/ResolutionMapper "Resolution Mapper.app/Contents/MacOS/ResolutionMapper"
-cp Info.plist "Resolution Mapper.app/Contents/Info.plist"
-xattr -cr "Resolution Mapper.app"
-codesign --force --sign - "Resolution Mapper.app"
-open "Resolution Mapper.app"
+CONFIG=debug scripts/build-release.sh
+open "dist/Resolution Mapper.app"
 ```
 
 ## Attribution
@@ -44,4 +40,3 @@ The `VirtualDisplayBridge` target is derived from [SimpleDisplay](https://github
 ## License
 
 GPLv3. See [LICENSE](LICENSE).
-
