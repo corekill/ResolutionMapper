@@ -188,6 +188,16 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.48))
             Spacer()
+            Link(destination: URL(string: "https://ko-fi.com/corekill")!) {
+                Label("Donate", systemImage: "heart")
+            }
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.62))
+            .buttonStyle(.plain)
+
+            Text("Created by corekill")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.38))
         }
         .padding(.top, 16)
     }

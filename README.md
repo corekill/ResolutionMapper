@@ -1,8 +1,12 @@
 # Resolution Mapper
 
-Resolution Mapper is a small macOS utility for mapping a physical external monitor to a virtual display with a custom resolution. It was built for stubborn Full HD monitors that feel too large in macOS, but it can be used with any detected external display.
+Resolution Mapper is a small macOS utility for changing, overriding, and mapping external monitor resolution through a virtual display. It was built for stubborn Full HD monitors that feel too large in macOS, but it can be used with any detected external display.
 
 It creates a virtual display, mirrors a selected monitor to it, and stores profiles per monitor using vendor, model, and serial identifiers.
+
+Use it when macOS does not offer the resolution you want in Display Settings, when an external monitor needs more workspace than its native mode exposes, or when you want a free macOS custom resolution mapper without relying on BetterDisplay.
+
+Keywords people usually search for: macOS resolution override, Mac resolution changer, external monitor custom resolution, virtual display resolution, HiDPI display mapper, QHD on Full HD monitor, change Mac monitor resolution, force display resolution on macOS.
 
 ## Features
 
@@ -13,6 +17,14 @@ It creates a virtual display, mirrors a selected monitor to it, and stores profi
 - Restore the saved mapping when the monitor is connected again
 - Optional launch-at-login restoration
 - Presets for QHD, soft QHD, wide workbench, 4K downsample, and native FHD
+
+## Download
+
+Get the latest universal macOS installer from the [Releases](https://github.com/corekill/ResolutionMapper/releases) page.
+
+## Support
+
+Created by [corekill](https://github.com/corekill). If Resolution Mapper helps you, you can support the project on [Ko-fi](https://ko-fi.com/corekill).
 
 ## Notes
 
