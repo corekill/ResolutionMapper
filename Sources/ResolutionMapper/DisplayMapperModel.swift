@@ -97,10 +97,9 @@ final class DisplayMapperModel: ObservableObject {
                     return
                 }
 
-                let virtualID = try createVirtualDisplay(for: targetID, width: width, height: height, hiDPI: requestedHiDPI)
-                try setMirrorWithRetry(targetID: targetID, sourceID: virtualID)
-                saveLastMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI)
-                refreshDisplays()
+                let origin = displayOrigin(for: targetID)
+                try applyMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI, origin: origin)
+                saveLastMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI, origin: origin)
                 status = "Mapped \(DisplayNames.name(for: targetID)) to \(width)x\(height)."
             } catch {
                 status = error.localizedDescription
@@ -124,7 +123,19 @@ final class DisplayMapperModel: ObservableObject {
         customHeight = "\(mapping.height)"
         useHiDPI = mapping.hiDPI
         useCustomResolution = true
-        applySelectedMapping()
+
+        Task { @MainActor in
+            isBusy = true
+            defer { isBusy = false }
+
+            do {
+                let origin = mapping.savedOrigin ?? displayOrigin(for: targetID)
+                try applyMapping(targetID: targetID, width: mapping.width, height: mapping.height, hiDPI: mapping.hiDPI, origin: origin)
+                status = "Restored \(DisplayNames.name(for: targetID)) to \(mapping.width)x\(mapping.height)."
+            } catch {
+                status = error.localizedDescription
+            }
+        }
     }
 
     func unmapSelected() {
@@ -164,6 +175,26 @@ final class DisplayMapperModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
             self.sparkleBurst = false
         }
+    }
+
+    private func applyMapping(targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool, origin: CGPoint?) throws {
+        if let origin {
+            try setDisplayOriginWithRetry(displayID: targetID, origin: origin)
+        }
+
+        let virtualID = try createVirtualDisplay(for: targetID, width: width, height: height, hiDPI: hiDPI)
+
+        if let origin {
+            try setDisplayOriginWithRetry(displayID: virtualID, origin: origin)
+        }
+
+        try setMirrorWithRetry(targetID: targetID, sourceID: virtualID)
+
+        if let origin {
+            try setDisplayOriginWithRetry(displayID: virtualID, origin: origin)
+        }
+
+        refreshDisplays()
     }
 
     private func createVirtualDisplay(for targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool) throws -> CGDirectDisplayID {
@@ -256,9 +287,57 @@ final class DisplayMapperModel: ObservableObject {
         throw lastError ?? MapperError.message("Mirror setup failed.")
     }
 
-    private func saveLastMapping(targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool) {
+    private func setDisplayOrigin(displayID: CGDirectDisplayID, origin: CGPoint) throws {
+        var config: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&config) == .success else {
+            throw MapperError.message("Could not begin display origin configuration.")
+        }
+
+        let originError = CGConfigureDisplayOrigin(config, displayID, Int32(origin.x.rounded()), Int32(origin.y.rounded()))
+        guard originError == .success else {
+            CGCancelDisplayConfiguration(config)
+            throw MapperError.message("Display origin setup failed: \(originError.rawValue).")
+        }
+
+        let completeError = CGCompleteDisplayConfiguration(config, .forSession)
+        guard completeError == .success else {
+            CGCancelDisplayConfiguration(config)
+            throw MapperError.message("Display origin configuration failed: \(completeError.rawValue).")
+        }
+    }
+
+    private func setDisplayOriginWithRetry(displayID: CGDirectDisplayID, origin: CGPoint) throws {
+        var lastError: Error?
+
+        for _ in 0..<4 {
+            do {
+                try setDisplayOrigin(displayID: displayID, origin: origin)
+                return
+            } catch {
+                lastError = error
+                Thread.sleep(forTimeInterval: 0.25)
+                refreshDisplays()
+            }
+        }
+
+        throw lastError ?? MapperError.message("Display origin setup failed.")
+    }
+
+    private func displayOrigin(for id: CGDirectDisplayID) -> CGPoint {
+        CGDisplayBounds(id).origin
+    }
+
+    private func saveLastMapping(targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool, origin: CGPoint) {
         let monitorKey = Self.identityKey(for: targetID)
-        let mapping = SavedMapping(targetDisplayID: targetID, monitorKey: monitorKey, width: width, height: height, hiDPI: hiDPI)
+        let mapping = SavedMapping(
+            targetDisplayID: targetID,
+            monitorKey: monitorKey,
+            width: width,
+            height: height,
+            hiDPI: hiDPI,
+            originX: Int32(origin.x.rounded()),
+            originY: Int32(origin.y.rounded())
+        )
         if let data = try? JSONEncoder().encode(mapping) {
             defaults.set(data, forKey: savedMappingKey)
         }

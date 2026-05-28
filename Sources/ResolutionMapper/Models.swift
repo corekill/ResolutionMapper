@@ -43,4 +43,11 @@ struct SavedMapping: Codable {
     var width: Int
     var height: Int
     var hiDPI: Bool
+    var originX: Int32?
+    var originY: Int32?
+
+    var savedOrigin: CGPoint? {
+        guard let originX, let originY else { return nil }
+        return CGPoint(x: Int(originX), y: Int(originY))
+    }
 }
