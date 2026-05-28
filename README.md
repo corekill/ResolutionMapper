@@ -13,6 +13,7 @@ Keywords people usually search for: macOS resolution override, Mac resolution ch
 - Create virtual displays with custom resolutions
 - Map any connected external monitor to a selected virtual resolution
 - Store resolution profiles per monitor identity
+- Use a stable virtual display identity per physical monitor
 - Remove virtual displays automatically when the physical monitor is disconnected
 - Restore the saved mapping when the monitor is connected again
 - Optional launch-at-login restoration

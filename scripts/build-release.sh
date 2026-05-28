@@ -40,6 +40,8 @@ cp Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 xattr -cr "$APP"
+xattr -d com.apple.FinderInfo "$APP" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$APP" 2>/dev/null || true
 codesign --force --sign - "$APP"
 xattr -cr "$APP"
 xattr -d com.apple.FinderInfo "$APP" 2>/dev/null || true

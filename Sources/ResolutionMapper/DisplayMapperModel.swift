@@ -97,7 +97,7 @@ final class DisplayMapperModel: ObservableObject {
                     return
                 }
 
-                let virtualID = try createVirtualDisplay(width: width, height: height, hiDPI: requestedHiDPI)
+                let virtualID = try createVirtualDisplay(for: targetID, width: width, height: height, hiDPI: requestedHiDPI)
                 try setMirrorWithRetry(targetID: targetID, sourceID: virtualID)
                 saveLastMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI)
                 refreshDisplays()
@@ -166,18 +166,26 @@ final class DisplayMapperModel: ObservableObject {
         }
     }
 
-    private func createVirtualDisplay(width: Int, height: Int, hiDPI: Bool) throws -> CGDirectDisplayID {
+    private func createVirtualDisplay(for targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool) throws -> CGDirectDisplayID {
+        let targetKey = Self.identityKey(for: targetID)
+        let virtualSerial = Self.stableVirtualSerial(for: targetKey)
+
         if let existing = displays.first(where: {
-            $0.isVirtual && Int($0.pixels.width) == width && Int($0.pixels.height) == height
+            $0.isVirtual &&
+            CGDisplaySerialNumber($0.id) == virtualSerial &&
+            Int($0.pixels.width) == width &&
+            Int($0.pixels.height) == height
         }) {
             return existing.id
         }
 
+        removeManagedVirtualDisplays(serialNumber: virtualSerial)
+
         let wrapper = VirtualDisplayWrapper.create(
-            withName: "Mapper Virtual \(width)x\(height)",
+            withName: "Mapper \(DisplayNames.name(for: targetID))",
             vendorID: 0x1234,
             productID: 0x5678,
-            serialNumber: UInt32.random(in: 1...UInt32.max),
+            serialNumber: virtualSerial,
             sizeInMillimeters: CGSize(width: 600, height: 340),
             maxPixelsWide: 8192,
             maxPixelsHigh: 8192,
@@ -197,6 +205,19 @@ final class DisplayMapperModel: ObservableObject {
         Thread.sleep(forTimeInterval: 0.6)
         refreshDisplays()
         return wrapper.displayID
+    }
+
+    private func removeManagedVirtualDisplays(serialNumber: UInt32) {
+        let matchingIDs = virtualDisplays.keys.filter { CGDisplaySerialNumber($0) == serialNumber }
+        for id in matchingIDs {
+            virtualDisplays[id]?.invalidate()
+            virtualDisplays.removeValue(forKey: id)
+        }
+
+        if !matchingIDs.isEmpty {
+            Thread.sleep(forTimeInterval: 0.35)
+            refreshDisplays()
+        }
     }
 
     private func setMirror(targetID: CGDirectDisplayID, sourceID: CGDirectDisplayID) throws {
@@ -409,6 +430,15 @@ final class DisplayMapperModel: ObservableObject {
         ]
         .map(String.init)
         .joined(separator: "-")
+    }
+
+    private static func stableVirtualSerial(for monitorKey: String) -> UInt32 {
+        var hash: UInt32 = 2_166_136_261
+        for byte in monitorKey.utf8 {
+            hash ^= UInt32(byte)
+            hash &*= 16_777_619
+        }
+        return hash == 0 ? 1 : hash
     }
 }
 
