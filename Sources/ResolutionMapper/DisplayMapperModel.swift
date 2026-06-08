@@ -98,9 +98,11 @@ final class DisplayMapperModel: ObservableObject {
                 }
 
                 let origin = displayOrigin(for: targetID)
-                try applyMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI, origin: origin)
+                let restoredOrigin = try applyMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI, origin: origin)
                 saveLastMapping(targetID: targetID, width: width, height: height, hiDPI: requestedHiDPI, origin: origin)
-                status = "Mapped \(DisplayNames.name(for: targetID)) to \(width)x\(height)."
+                status = restoredOrigin
+                    ? "Mapped \(DisplayNames.name(for: targetID)) to \(width)x\(height)."
+                    : "Mapped \(DisplayNames.name(for: targetID)); macOS refused arrangement restore."
             } catch {
                 status = error.localizedDescription
             }
@@ -130,8 +132,10 @@ final class DisplayMapperModel: ObservableObject {
 
             do {
                 let origin = mapping.savedOrigin ?? displayOrigin(for: targetID)
-                try applyMapping(targetID: targetID, width: mapping.width, height: mapping.height, hiDPI: mapping.hiDPI, origin: origin)
-                status = "Restored \(DisplayNames.name(for: targetID)) to \(mapping.width)x\(mapping.height)."
+                let restoredOrigin = try applyMapping(targetID: targetID, width: mapping.width, height: mapping.height, hiDPI: mapping.hiDPI, origin: origin)
+                status = restoredOrigin
+                    ? "Restored \(DisplayNames.name(for: targetID)) to \(mapping.width)x\(mapping.height)."
+                    : "Restored mapping; macOS refused arrangement restore."
             } catch {
                 status = error.localizedDescription
             }
@@ -159,6 +163,24 @@ final class DisplayMapperModel: ObservableObject {
         }
         virtualDisplays.removeAll()
         refreshDisplays()
+        status = "Managed virtual displays removed."
+    }
+
+    func removeVirtualDisplay(id: CGDirectDisplayID) {
+        if let wrapper = virtualDisplays[id] {
+            wrapper.invalidate()
+            virtualDisplays.removeValue(forKey: id)
+            refreshDisplays()
+            status = "Virtual display removed."
+            return
+        }
+
+        if displays.contains(where: { $0.id == id && $0.isVirtual }) {
+            status = "This virtual display belongs to an older app session. Quit Resolution Mapper or log out to clear it."
+        } else {
+            status = "Virtual display is no longer connected."
+            refreshDisplays()
+        }
     }
 
     func toggleLaunchAtLogin() {
@@ -177,24 +199,27 @@ final class DisplayMapperModel: ObservableObject {
         }
     }
 
-    private func applyMapping(targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool, origin: CGPoint?) throws {
+    private func applyMapping(targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool, origin: CGPoint?) throws -> Bool {
+        var restoredOrigin = true
+
         if let origin {
-            try setDisplayOriginWithRetry(displayID: targetID, origin: origin)
+            restoredOrigin = restoreDisplayOriginWithRetry(displayID: targetID, origin: origin) && restoredOrigin
         }
 
         let virtualID = try createVirtualDisplay(for: targetID, width: width, height: height, hiDPI: hiDPI)
 
         if let origin {
-            try setDisplayOriginWithRetry(displayID: virtualID, origin: origin)
+            restoredOrigin = restoreDisplayOriginWithRetry(displayID: virtualID, origin: origin) && restoredOrigin
         }
 
         try setMirrorWithRetry(targetID: targetID, sourceID: virtualID)
 
         if let origin {
-            try setDisplayOriginWithRetry(displayID: virtualID, origin: origin)
+            restoredOrigin = restoreDisplayOriginWithRetry(displayID: virtualID, origin: origin) && restoredOrigin
         }
 
         refreshDisplays()
+        return restoredOrigin
     }
 
     private func createVirtualDisplay(for targetID: CGDirectDisplayID, width: Int, height: Int, hiDPI: Bool) throws -> CGDirectDisplayID {
@@ -321,6 +346,15 @@ final class DisplayMapperModel: ObservableObject {
         }
 
         throw lastError ?? MapperError.message("Display origin setup failed.")
+    }
+
+    private func restoreDisplayOriginWithRetry(displayID: CGDirectDisplayID, origin: CGPoint) -> Bool {
+        do {
+            try setDisplayOriginWithRetry(displayID: displayID, origin: origin)
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func displayOrigin(for id: CGDirectDisplayID) -> CGPoint {

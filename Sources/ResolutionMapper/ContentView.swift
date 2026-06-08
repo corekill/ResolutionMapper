@@ -91,7 +91,9 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(model.displays) { display in
-                    DisplayRow(display: display)
+                    DisplayRow(display: display) {
+                        model.removeVirtualDisplay(id: display.id)
+                    }
                 }
             }
         }
@@ -166,6 +168,14 @@ struct ContentView: View {
             }
             .buttonStyle(ToolButtonStyle())
 
+            Button {
+                model.removeVirtualDisplays()
+            } label: {
+                Label("Clear Virtuals", systemImage: "xmark.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ToolButtonStyle())
+
             Toggle("Restore on login", isOn: $model.launchAtLogin)
                 .toggleStyle(.switch)
                 .onChange(of: model.launchAtLogin) { _, _ in
@@ -205,6 +215,7 @@ struct ContentView: View {
 
 struct DisplayRow: View {
     let display: DisplayItem
+    let removeAction: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -222,6 +233,18 @@ struct DisplayRow: View {
             }
 
             Spacer()
+
+            if display.isVirtual {
+                Button(action: removeAction) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.white.opacity(0.58))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Remove virtual display")
+            }
         }
         .padding(10)
         .background(.white.opacity(display.inMirrorSet ? 0.12 : 0.06), in: RoundedRectangle(cornerRadius: 8))

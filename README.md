@@ -15,6 +15,7 @@ Keywords people usually search for: macOS resolution override, Mac resolution ch
 - Store resolution profiles per monitor identity
 - Use a stable virtual display identity per physical monitor
 - Restore saved display arrangement origin after reconnect
+- Remove managed virtual displays from the monitor list
 - Remove virtual displays automatically when the physical monitor is disconnected
 - Restore the saved mapping when the monitor is connected again
 - Optional launch-at-login restoration
@@ -47,7 +48,7 @@ To create a local universal app bundle and DMG installer:
 ```sh
 CONFIG=debug scripts/build-release.sh
 open "dist/Resolution Mapper.app"
-open "dist/ResolutionMapper-v1.1-macos-universal.dmg"
+open "dist/ResolutionMapper-v1.2-macos-universal.dmg"
 ```
 
 ## Attribution
