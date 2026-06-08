@@ -6,17 +6,26 @@ APP_NAME="Resolution Mapper"
 PRODUCT="ResolutionMapper"
 CONFIG="${CONFIG:-debug}"
 DIST="$ROOT/dist"
-APP="$DIST/$APP_NAME.app"
-VERSION="${VERSION:-1.2}"
+VERSION="${VERSION:-1.3}"
 DMG_NAME="$PRODUCT-v$VERSION-macos-universal"
-DMG_STAGING="$DIST/dmg-staging"
+BUILD_ROOT="$(mktemp -d /tmp/resolutionmapper-release.XXXXXX)"
+APP="$BUILD_ROOT/$APP_NAME.app"
+DMG_STAGING="$BUILD_ROOT/dmg-staging"
 DMG_BACKGROUND="$ROOT/Resources/DmgBackground.png"
-RW_DMG="$DIST/$DMG_NAME-rw.dmg"
+RW_DMG="$BUILD_ROOT/$DMG_NAME-rw.dmg"
 FINAL_DMG="$DIST/$DMG_NAME.dmg"
 
 cd "$ROOT"
 
+clean_app_metadata() {
+  local app_path="$1"
+  xattr -cr "$app_path" 2>/dev/null || true
+  xattr -rd com.apple.FinderInfo "$app_path" 2>/dev/null || true
+  xattr -rd 'com.apple.fileprovider.fpfs#P' "$app_path" 2>/dev/null || true
+}
+
 rm -rf "$DIST"
+mkdir -p "$DIST"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 /Library/Developer/CommandLineTools/usr/bin/swift-build \
@@ -37,16 +46,12 @@ lipo -create \
   ".build/arm64-apple-macosx/$CONFIG/$PRODUCT" \
   ".build/x86_64-apple-macosx/$CONFIG/$PRODUCT" \
   -output "$APP/Contents/MacOS/$PRODUCT"
-cp Info.plist "$APP/Contents/Info.plist"
-cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+ditto --noextattr Info.plist "$APP/Contents/Info.plist"
+ditto --noextattr Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-xattr -cr "$APP"
-xattr -d com.apple.FinderInfo "$APP" 2>/dev/null || true
-xattr -d 'com.apple.fileprovider.fpfs#P' "$APP" 2>/dev/null || true
+clean_app_metadata "$APP"
 codesign --force --sign - "$APP"
-xattr -cr "$APP"
-xattr -d com.apple.FinderInfo "$APP" 2>/dev/null || true
-xattr -d 'com.apple.fileprovider.fpfs#P' "$APP" 2>/dev/null || true
+clean_app_metadata "$APP"
 codesign --verify --deep --strict "$APP"
 
 rm -rf "$DMG_STAGING" "$RW_DMG" "$FINAL_DMG"
@@ -92,9 +97,7 @@ tell application "Finder"
 end tell
 APPLESCRIPT
 
-xattr -cr "$MOUNT_DIR/$APP_NAME.app"
-xattr -d com.apple.FinderInfo "$MOUNT_DIR/$APP_NAME.app" 2>/dev/null || true
-xattr -d 'com.apple.fileprovider.fpfs#P' "$MOUNT_DIR/$APP_NAME.app" 2>/dev/null || true
+clean_app_metadata "$MOUNT_DIR/$APP_NAME.app"
 codesign --verify --deep --strict "$MOUNT_DIR/$APP_NAME.app"
 
 sync
@@ -107,6 +110,7 @@ done
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$FINAL_DMG"
 hdiutil verify "$FINAL_DMG"
 rm -f "$RW_DMG"
+ditto --noextattr "$APP" "$DIST/$APP_NAME.app"
 
-echo "$APP"
+echo "$DIST/$APP_NAME.app"
 echo "$FINAL_DMG"
