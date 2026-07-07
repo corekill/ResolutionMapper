@@ -15,8 +15,11 @@ final class DisplayMapperModel: ObservableObject {
     @Published var launchAtLogin = true
     @Published var softwareDimmingEnabled = false
     @Published var softwareDimmingAmount = 0.35
+    @Published var selectedDimmingDisplayID: CGDirectDisplayID?
     @Published var phoneRemoteEnabled = false
     @Published var remoteURL = ""
+    @Published var remotePairingDeviceName = ""
+    @Published var authorizedRemoteDeviceCount = 0
     @Published var status = "Ready"
     @Published var isBusy = false
     @Published var sparkleBurst = false
@@ -30,8 +33,12 @@ final class DisplayMapperModel: ObservableObject {
     private let defaults = UserDefaults.standard
     private let savedMappingKey = "savedMapping"
     private let monitorMappingsKey = "monitorMappings"
-    private let remoteTokenKey = "phoneRemoteToken"
+    private let softwareDimmingAmountsKey = "softwareDimmingAmounts"
+    private let selectedDimmingDisplayKey = "selectedDimmingDisplayKey"
+    private let authorizedRemoteDevicesKey = "authorizedRemoteDevices"
     private let launchAgentPath = "\(NSHomeDirectory())/Library/LaunchAgents/com.codex.resolution-mapper.plist"
+    private var displayDimmingAmounts: [String: Double] = [:]
+    private var authorizedRemoteDevices: [RemoteDevice] = []
 
     init() {
         refreshDisplays()
@@ -53,6 +60,10 @@ final class DisplayMapperModel: ObservableObject {
 
     var virtualDisplayOptions: [DisplayItem] {
         displays.filter(\.isVirtual)
+    }
+
+    var dimmingDisplays: [DisplayItem] {
+        displays.filter { !$0.isVirtual }
     }
 
     var requestedWidth: Int {
@@ -91,6 +102,7 @@ final class DisplayMapperModel: ObservableObject {
             selectedTargetID = targetDisplays.first?.id
         }
 
+        resolveSelectedDimmingDisplay()
         handleExternalDisplayPresence()
         dimmer.refreshScreens()
     }
@@ -209,6 +221,7 @@ final class DisplayMapperModel: ObservableObject {
         if let amount {
             softwareDimmingAmount = clamp(amount, min: 0, max: 0.92)
         }
+        saveSelectedDimmingAmount()
         defaults.set(softwareDimmingEnabled, forKey: "softwareDimmingEnabled")
         defaults.set(softwareDimmingAmount, forKey: "softwareDimmingAmount")
         applySoftwareDimming()
@@ -219,6 +232,44 @@ final class DisplayMapperModel: ObservableObject {
 
     func setSoftwareDimmingAmount(_ amount: Double) {
         setSoftwareDimming(enabled: softwareDimmingEnabled, amount: amount)
+    }
+
+    func selectDimmingDisplay(id: CGDirectDisplayID) {
+        guard dimmingDisplays.contains(where: { $0.id == id }) else {
+            return
+        }
+        selectedDimmingDisplayID = id
+        if let display = dimmingDisplays.first(where: { $0.id == id }) {
+            defaults.set(display.identityKey, forKey: selectedDimmingDisplayKey)
+            softwareDimmingAmount = dimmingAmount(for: display)
+        }
+    }
+
+    func dimmingAmount(for display: DisplayItem) -> Double {
+        displayDimmingAmounts[display.identityKey] ?? 0
+    }
+
+    func authorizePhoneRemote(code: String) {
+        guard let device = remoteServer?.approvePairingCode(code) else {
+            status = "Pairing code not found."
+            return
+        }
+
+        if !authorizedRemoteDevices.contains(where: { $0.id == device.id }) {
+            authorizedRemoteDevices.append(device)
+            saveAuthorizedRemoteDevices()
+        }
+
+        remotePairingDeviceName = ""
+        status = "Authorized \(device.name)."
+    }
+
+    func forgetPhoneRemotes() {
+        authorizedRemoteDevices.removeAll()
+        saveAuthorizedRemoteDevices()
+        remoteServer?.clearPairingRequests()
+        remotePairingDeviceName = ""
+        status = "Authorized phones removed."
     }
 
     func setPhoneRemoteEnabled(_ enabled: Bool) {
@@ -252,6 +303,10 @@ final class DisplayMapperModel: ObservableObject {
         if let error {
             status = "Volume failed: \(error[NSAppleScript.errorMessage] ?? "AppleScript error")."
         }
+    }
+
+    func adjustSystemVolume(delta: Int) {
+        setSystemVolume(currentSystemVolume() + delta)
     }
 
     func performMediaAction(_ action: RemoteMediaAction) {
@@ -497,7 +552,15 @@ final class DisplayMapperModel: ObservableObject {
         launchAtLogin = defaults.object(forKey: "launchAtLogin") as? Bool ?? true
         softwareDimmingEnabled = defaults.object(forKey: "softwareDimmingEnabled") as? Bool ?? false
         softwareDimmingAmount = defaults.object(forKey: "softwareDimmingAmount") as? Double ?? 0.35
+        displayDimmingAmounts = loadDimmingAmounts()
+        if displayDimmingAmounts.isEmpty, let selected = selectedDimmingDisplay {
+            displayDimmingAmounts[selected.identityKey] = softwareDimmingAmount
+            saveDimmingAmounts()
+        }
+        resolveSelectedDimmingDisplay()
         phoneRemoteEnabled = defaults.object(forKey: "phoneRemoteEnabled") as? Bool ?? false
+        authorizedRemoteDevices = loadAuthorizedRemoteDevices()
+        authorizedRemoteDeviceCount = authorizedRemoteDevices.count
         if let mapping = loadLastMapping() {
             selectedTargetID = resolveTargetID(for: mapping) ?? mapping.targetDisplayID
             customWidth = "\(mapping.width)"
@@ -522,7 +585,22 @@ final class DisplayMapperModel: ObservableObject {
     }
 
     private func applySoftwareDimming() {
-        dimmer.set(enabled: softwareDimmingEnabled, amount: softwareDimmingAmount)
+        guard softwareDimmingEnabled else {
+            dimmer.set(levelsByDisplayID: [:])
+            return
+        }
+
+        var levels: [CGDirectDisplayID: Double] = [:]
+        for display in dimmingDisplays {
+            let amount = dimmingAmount(for: display)
+            guard amount > 0.005 else { continue }
+            levels[display.id] = amount
+            if display.mirrors != kCGNullDirectDisplay {
+                levels[display.mirrors] = amount
+            }
+        }
+
+        dimmer.set(levelsByDisplayID: levels)
     }
 
     private func startPhoneRemote() {
@@ -530,24 +608,32 @@ final class DisplayMapperModel: ObservableObject {
             return
         }
 
-        let token = remoteToken()
         let server = RemoteControlServer(
-            token: token,
             stateProvider: { [weak self] in
-                RemoteControlState(
-                    dimmingEnabled: self?.softwareDimmingEnabled ?? false,
-                    dimmingAmount: self?.softwareDimmingAmount ?? 0,
-                    volume: self?.currentSystemVolume() ?? 0
-                )
+                self?.remoteState() ?? RemoteControlState(dimmingEnabled: false, selectedDimmingDisplayID: nil, dimmingDisplays: [], volume: 0)
             },
-            dimmingHandler: { [weak self] enabled, amount in
-                self?.setSoftwareDimming(enabled: enabled, amount: amount)
+            dimmingHandler: { [weak self] displayID, enabled, amount in
+                self?.setRemoteDimming(displayID: displayID, enabled: enabled, amount: amount)
             },
             volumeHandler: { [weak self] volume in
                 self?.setSystemVolume(volume)
             },
+            volumeDeltaHandler: { [weak self] delta in
+                self?.adjustSystemVolume(delta: delta)
+            },
             mediaHandler: { [weak self] action in
                 self?.performMediaAction(action)
+            },
+            isDeviceAuthorized: { [weak self] deviceID in
+                self?.isRemoteDeviceAuthorized(deviceID) ?? false
+            },
+            pairingRequestHandler: { [weak self] pairing in
+                if let pairing {
+                    self?.remotePairingDeviceName = pairing.name
+                    self?.status = "Pairing request from \(pairing.name). Enter the code from phone."
+                } else {
+                    self?.remotePairingDeviceName = ""
+                }
             }
         )
         server.onEndpointChanged = { [weak self] url in
@@ -560,7 +646,7 @@ final class DisplayMapperModel: ObservableObject {
         do {
             try server.start()
             remoteServer = server
-            remoteURL = server.urlString()
+            remoteURL = server.pairingURLString()
             status = "Phone remote starting."
         } catch {
             remoteServer = nil
@@ -577,21 +663,106 @@ final class DisplayMapperModel: ObservableObject {
         remoteURL = ""
     }
 
-    private func remoteToken() -> String {
-        if let token = defaults.string(forKey: remoteTokenKey), !token.isEmpty {
-            return token
-        }
-
-        let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        defaults.set(token, forKey: remoteTokenKey)
-        return token
-    }
-
     private func currentSystemVolume() -> Int {
         var error: NSDictionary?
         let script = NSAppleScript(source: "output volume of (get volume settings)")
         let result = script?.executeAndReturnError(&error)
         return clamp(Int(result?.int32Value ?? 0), min: 0, max: 100)
+    }
+
+    private var selectedDimmingDisplay: DisplayItem? {
+        guard let selectedDimmingDisplayID else { return nil }
+        return dimmingDisplays.first(where: { $0.id == selectedDimmingDisplayID })
+    }
+
+    private func resolveSelectedDimmingDisplay() {
+        let storedKey = defaults.string(forKey: selectedDimmingDisplayKey)
+
+        if let selectedDimmingDisplayID,
+           dimmingDisplays.contains(where: { $0.id == selectedDimmingDisplayID }) {
+            if let display = selectedDimmingDisplay {
+                softwareDimmingAmount = dimmingAmount(for: display)
+            }
+            return
+        }
+
+        if let storedKey,
+           let display = dimmingDisplays.first(where: { $0.identityKey == storedKey }) {
+            selectedDimmingDisplayID = display.id
+            softwareDimmingAmount = dimmingAmount(for: display)
+            return
+        }
+
+        let fallback = targetDisplays.first ?? dimmingDisplays.first
+        selectedDimmingDisplayID = fallback?.id
+        if let fallback {
+            defaults.set(fallback.identityKey, forKey: selectedDimmingDisplayKey)
+            softwareDimmingAmount = dimmingAmount(for: fallback)
+        }
+    }
+
+    private func saveSelectedDimmingAmount() {
+        guard let display = selectedDimmingDisplay else {
+            return
+        }
+        displayDimmingAmounts[display.identityKey] = softwareDimmingAmount
+        saveDimmingAmounts()
+    }
+
+    private func loadDimmingAmounts() -> [String: Double] {
+        guard let data = defaults.data(forKey: softwareDimmingAmountsKey),
+              let amounts = try? JSONDecoder().decode([String: Double].self, from: data) else {
+            return [:]
+        }
+        return amounts
+    }
+
+    private func saveDimmingAmounts() {
+        if let data = try? JSONEncoder().encode(displayDimmingAmounts) {
+            defaults.set(data, forKey: softwareDimmingAmountsKey)
+        }
+    }
+
+    private func remoteState() -> RemoteControlState {
+        RemoteControlState(
+            dimmingEnabled: softwareDimmingEnabled,
+            selectedDimmingDisplayID: selectedDimmingDisplayID,
+            dimmingDisplays: dimmingDisplays.map { display in
+                RemoteDimmingDisplay(
+                    id: display.id,
+                    name: display.name,
+                    amount: dimmingAmount(for: display),
+                    selected: display.id == selectedDimmingDisplayID
+                )
+            },
+            volume: currentSystemVolume()
+        )
+    }
+
+    private func setRemoteDimming(displayID: CGDirectDisplayID?, enabled: Bool, amount: Double) {
+        if let displayID, dimmingDisplays.contains(where: { $0.id == displayID }) {
+            selectDimmingDisplay(id: displayID)
+        }
+        setSoftwareDimming(enabled: enabled, amount: amount)
+    }
+
+    private func isRemoteDeviceAuthorized(_ deviceID: String) -> Bool {
+        authorizedRemoteDevices.contains(where: { $0.id == deviceID })
+    }
+
+    private func loadAuthorizedRemoteDevices() -> [RemoteDevice] {
+        guard let data = defaults.data(forKey: authorizedRemoteDevicesKey),
+              let devices = try? JSONDecoder().decode([RemoteDevice].self, from: data) else {
+            return []
+        }
+        return devices
+    }
+
+    private func saveAuthorizedRemoteDevices() {
+        if let data = try? JSONEncoder().encode(authorizedRemoteDevices) {
+            defaults.set(data, forKey: authorizedRemoteDevicesKey)
+        }
+        authorizedRemoteDeviceCount = authorizedRemoteDevices.count
     }
 
     private func startDisplayMonitoring() {

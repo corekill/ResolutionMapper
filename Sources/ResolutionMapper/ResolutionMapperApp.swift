@@ -9,7 +9,7 @@ struct ResolutionMapperApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 980, minHeight: 640)
+                .frame(minWidth: 1020, minHeight: 700)
                 .background(WindowAccessor { window in
                     MainWindowController.shared.attach(window)
                 })

@@ -6,7 +6,7 @@ APP_NAME="Resolution Mapper"
 PRODUCT="ResolutionMapper"
 CONFIG="${CONFIG:-debug}"
 DIST="$ROOT/dist"
-VERSION="${VERSION:-1.4}"
+VERSION="${VERSION:-1.5}"
 DMG_NAME="$PRODUCT-v$VERSION-macos-universal"
 BUILD_ROOT="$(mktemp -d /tmp/resolutionmapper-release.XXXXXX)"
 APP="$BUILD_ROOT/$APP_NAME.app"
@@ -22,6 +22,7 @@ clean_app_metadata() {
   xattr -cr "$app_path" 2>/dev/null || true
   xattr -rd com.apple.FinderInfo "$app_path" 2>/dev/null || true
   xattr -rd 'com.apple.fileprovider.fpfs#P' "$app_path" 2>/dev/null || true
+  xattr -rd com.apple.provenance "$app_path" 2>/dev/null || true
 }
 
 rm -rf "$DIST"

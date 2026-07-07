@@ -4,8 +4,7 @@ import AppKit
 final class ScreenDimmer {
     private var panels: [String: NSPanel] = [:]
     private var screenObserver: NSObjectProtocol?
-    private var enabled = false
-    private var amount = 0.0
+    private var levelsByDisplayID: [CGDirectDisplayID: Double] = [:]
 
     init() {
         screenObserver = NotificationCenter.default.addObserver(
@@ -25,9 +24,8 @@ final class ScreenDimmer {
         }
     }
 
-    func set(enabled: Bool, amount: Double) {
-        self.enabled = enabled
-        self.amount = clamp(amount)
+    func set(levelsByDisplayID: [CGDirectDisplayID: Double]) {
+        self.levelsByDisplayID = levelsByDisplayID.mapValues(clamp)
         syncPanels()
     }
 
@@ -36,20 +34,32 @@ final class ScreenDimmer {
     }
 
     private func syncPanels() {
-        guard enabled, amount > 0.005 else {
+        guard !levelsByDisplayID.isEmpty else {
             removeAllPanels()
             return
         }
 
-        let liveKeys = Set(NSScreen.screens.map(screenKey))
+        let activeScreens = NSScreen.screens.compactMap { screen -> (NSScreen, CGDirectDisplayID, Double)? in
+            guard let displayID = displayID(for: screen) else { return nil }
+            let amount = levelsByDisplayID[displayID] ?? 0
+            guard amount > 0.005 else { return nil }
+            return (screen, displayID, amount)
+        }
+
+        guard !activeScreens.isEmpty else {
+            removeAllPanels()
+            return
+        }
+
+        let liveKeys = Set(activeScreens.map { screenKey($0.0, displayID: $0.1) })
         for key in panels.keys where !liveKeys.contains(key) {
             panels[key]?.orderOut(nil)
             panels.removeValue(forKey: key)
         }
 
-        for screen in NSScreen.screens {
-            let key = screenKey(screen)
-            let panel = panels[key] ?? createPanel(for: screen)
+        for (screen, displayID, amount) in activeScreens {
+            let key = screenKey(screen, displayID: displayID)
+            let panel = panels[key] ?? createPanel(for: screen, amount: amount)
             panels[key] = panel
             panel.setFrame(screen.frame, display: true)
             panel.backgroundColor = NSColor.black.withAlphaComponent(CGFloat(amount))
@@ -57,7 +67,7 @@ final class ScreenDimmer {
         }
     }
 
-    private func createPanel(for screen: NSScreen) -> NSPanel {
+    private func createPanel(for screen: NSScreen, amount: Double) -> NSPanel {
         let panel = NSPanel(
             contentRect: screen.frame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -86,9 +96,13 @@ final class ScreenDimmer {
         panels.removeAll()
     }
 
-    private func screenKey(_ screen: NSScreen) -> String {
+    private func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
+        screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+    }
+
+    private func screenKey(_ screen: NSScreen, displayID: CGDirectDisplayID) -> String {
         let frame = screen.frame
-        return "\(screen.localizedName)-\(Int(frame.origin.x))-\(Int(frame.origin.y))-\(Int(frame.width))-\(Int(frame.height))"
+        return "\(displayID)-\(screen.localizedName)-\(Int(frame.origin.x))-\(Int(frame.origin.y))-\(Int(frame.width))-\(Int(frame.height))"
     }
 
     private func clamp(_ value: Double) -> Double {

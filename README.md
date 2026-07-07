@@ -18,8 +18,9 @@ Keywords people usually search for: macOS resolution override, Mac resolution ch
 - Remove managed virtual displays from the monitor list
 - Remove virtual displays automatically when the physical monitor is disconnected
 - Restore the saved mapping when the monitor is connected again
-- Software dimming below the monitor hardware minimum
+- Per-monitor software dimming below the monitor hardware minimum
 - Optional LAN phone remote for dimming, volume, and media keys
+- QR code phone pairing with persistent authorized phones
 - Optional launch-at-login restoration
 - Presets for QHD, soft QHD, wide workbench, 4K downsample, and native FHD
 
@@ -50,7 +51,7 @@ To create a local universal app bundle and DMG installer:
 ```sh
 CONFIG=debug scripts/build-release.sh
 open "dist/Resolution Mapper.app"
-open "dist/ResolutionMapper-v1.4-macos-universal.dmg"
+open "dist/ResolutionMapper-v1.5-macos-universal.dmg"
 ```
 
 ## Attribution

@@ -1,8 +1,10 @@
+import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var model: DisplayMapperModel
     @State private var titleClickCount = 0
+    @State private var pairingCodeInput = ""
 
     var body: some View {
         ZStack {
@@ -142,62 +144,62 @@ struct ContentView: View {
     }
 
     private var actionPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Mapping")
-                .font(.headline)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Mapping")
+                    .font(.headline)
 
-            HStack {
-                StatTile(title: "Requested", value: "\(model.requestedWidth)x\(model.requestedHeight)")
-                StatTile(title: "Mode", value: model.requestedHiDPI ? "HiDPI" : "LoDPI")
-            }
-
-            Button {
-                model.applySelectedMapping()
-            } label: {
-                Label(model.isBusy ? "Applying..." : "Map Monitor", systemImage: "arrow.triangle.2.circlepath")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(model.isBusy)
-
-            Button {
-                model.unmapSelected()
-            } label: {
-                Label("Unmap", systemImage: "rectangle.on.rectangle.slash")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(ToolButtonStyle())
-
-            Button {
-                model.removeVirtualDisplays()
-            } label: {
-                Label("Clear Virtuals", systemImage: "xmark.circle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(ToolButtonStyle())
-
-            Divider().overlay(Color.white.opacity(0.08))
-
-            comfortControls
-
-            Divider().overlay(Color.white.opacity(0.08))
-
-            phoneRemoteControls
-
-            Toggle("Restore on login", isOn: $model.launchAtLogin)
-                .toggleStyle(.switch)
-                .onChange(of: model.launchAtLogin) { _, _ in
-                    model.toggleLaunchAtLogin()
+                HStack {
+                    StatTile(title: "Requested", value: "\(model.requestedWidth)x\(model.requestedHeight)")
+                    StatTile(title: "Mode", value: model.requestedHiDPI ? "HiDPI" : "LoDPI")
                 }
 
-            Text(model.status)
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.72))
-                .padding(.top, 8)
+                Button {
+                    model.applySelectedMapping()
+                } label: {
+                    Label(model.isBusy ? "Applying..." : "Map Monitor", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(model.isBusy)
 
-            Spacer()
+                Button {
+                    model.unmapSelected()
+                } label: {
+                    Label("Unmap", systemImage: "rectangle.on.rectangle.slash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ToolButtonStyle())
+
+                Button {
+                    model.removeVirtualDisplays()
+                } label: {
+                    Label("Clear Virtuals", systemImage: "xmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ToolButtonStyle())
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                comfortControls
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                phoneRemoteControls
+
+                Toggle("Restore on login", isOn: $model.launchAtLogin)
+                    .toggleStyle(.switch)
+                    .onChange(of: model.launchAtLogin) { _, _ in
+                        model.toggleLaunchAtLogin()
+                    }
+
+                Text(model.status)
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.72))
+                    .padding(.top, 8)
+            }
         }
-        .panelStyle(width: 285)
+        .panelStyle(width: 305)
     }
 
     private var comfortControls: some View {
@@ -205,6 +207,19 @@ struct ContentView: View {
             Text("Comfort")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.white.opacity(0.8))
+
+            if !model.dimmingDisplays.isEmpty {
+                Picker("Dim Display", selection: Binding(
+                    get: { model.selectedDimmingDisplayID ?? 0 },
+                    set: { model.selectDimmingDisplay(id: $0) }
+                )) {
+                    ForEach(model.dimmingDisplays) { display in
+                        Text(display.name).tag(display.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
 
             Toggle("Dim below minimum", isOn: Binding(
                 get: { model.softwareDimmingEnabled },
@@ -240,20 +255,65 @@ struct ContentView: View {
             .toggleStyle(.switch)
 
             if model.phoneRemoteEnabled {
-                Text(model.remoteURL.isEmpty ? "Starting..." : model.remoteURL)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(2)
-                    .textSelection(.enabled)
+                HStack(alignment: .top, spacing: 10) {
+                    QRCodeView(text: model.remoteURL)
+                        .frame(width: 88, height: 88)
+                        .opacity(model.remoteURL.isEmpty ? 0.25 : 1)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(model.remoteURL.isEmpty ? "Starting..." : model.remoteURL)
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.62))
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+
+                        if model.authorizedRemoteDeviceCount > 0 {
+                            Text("\(model.authorizedRemoteDeviceCount) phone\(model.authorizedRemoteDeviceCount == 1 ? "" : "s") authorized")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                    }
+                }
 
                 Button {
                     model.copyRemoteURL()
                 } label: {
-                    Label("Copy Link", systemImage: "doc.on.doc")
+                    Label("Copy QR Link", systemImage: "doc.on.doc")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(ToolButtonStyle())
                 .disabled(model.remoteURL.isEmpty)
+
+                if !model.remotePairingDeviceName.isEmpty {
+                    Text("Pairing \(model.remotePairingDeviceName)")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.58))
+                }
+
+                HStack(spacing: 8) {
+                    TextField("Code", text: $pairingCodeInput)
+                        .textFieldStyle(.roundedBorder)
+
+                    Button {
+                        model.authorizePhoneRemote(code: pairingCodeInput)
+                        pairingCodeInput = ""
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .frame(width: 28)
+                    }
+                    .buttonStyle(ToolButtonStyle())
+                    .disabled(pairingCodeInput.filter(\.isNumber).count < 4)
+                }
+
+                if model.authorizedRemoteDeviceCount > 0 {
+                    Button {
+                        model.forgetPhoneRemotes()
+                    } label: {
+                        Label("Forget Phones", systemImage: "iphone.slash")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(ToolButtonStyle())
+                }
             }
         }
     }
@@ -384,6 +444,39 @@ struct SparkleBurstView: View {
                 animate = true
             }
         }
+    }
+}
+
+struct QRCodeView: View {
+    let text: String
+    private let context = CIContext()
+    private let filter = CIFilter.qrCodeGenerator()
+
+    var body: some View {
+        Group {
+            if let image = makeImage() {
+                Image(nsImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(7)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.white.opacity(0.12))
+            }
+        }
+    }
+
+    private func makeImage() -> NSImage? {
+        guard !text.isEmpty else { return nil }
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let outputImage = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
+              let cgImage = context.createCGImage(outputImage, from: outputImage.extent) else {
+            return nil
+        }
+        return NSImage(cgImage: cgImage, size: NSSize(width: outputImage.extent.width, height: outputImage.extent.height))
     }
 }
 
