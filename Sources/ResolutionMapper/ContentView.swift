@@ -69,10 +69,17 @@ struct ContentView: View {
     private var main: some View {
         HStack(alignment: .top, spacing: 18) {
             monitorPanel
-            resolutionPanel
-            actionPanel
+            VStack(spacing: 18) {
+                resolutionPanel
+                comfortPanel
+            }
+            VStack(spacing: 18) {
+                mappingPanel
+                phoneRemotePanel
+            }
         }
         .padding(.top, 18)
+        .frame(maxWidth: 980, alignment: .center)
     }
 
     private var monitorPanel: some View {
@@ -99,7 +106,7 @@ struct ContentView: View {
                 }
             }
         }
-        .panelStyle(width: 275)
+        .panelStyle(width: 285)
     }
 
     private var resolutionPanel: some View {
@@ -140,29 +147,29 @@ struct ContentView: View {
                 .foregroundStyle(.white.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .panelStyle(width: 285)
+        .panelStyle(width: 300)
     }
 
-    private var actionPanel: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Mapping")
-                    .font(.headline)
+    private var mappingPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Mapping")
+                .font(.headline)
 
-                HStack {
-                    StatTile(title: "Requested", value: "\(model.requestedWidth)x\(model.requestedHeight)")
-                    StatTile(title: "Mode", value: model.requestedHiDPI ? "HiDPI" : "LoDPI")
-                }
+            HStack {
+                StatTile(title: "Requested", value: "\(model.requestedWidth)x\(model.requestedHeight)")
+                StatTile(title: "Mode", value: model.requestedHiDPI ? "HiDPI" : "LoDPI")
+            }
 
-                Button {
-                    model.applySelectedMapping()
-                } label: {
-                    Label(model.isBusy ? "Applying..." : "Map Monitor", systemImage: "arrow.triangle.2.circlepath")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(model.isBusy)
+            Button {
+                model.applySelectedMapping()
+            } label: {
+                Label(model.isBusy ? "Applying..." : "Map Monitor", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(model.isBusy)
 
+            HStack(spacing: 10) {
                 Button {
                     model.unmapSelected()
                 } label: {
@@ -174,32 +181,34 @@ struct ContentView: View {
                 Button {
                     model.removeVirtualDisplays()
                 } label: {
-                    Label("Clear Virtuals", systemImage: "xmark.circle")
+                    Label("Clear", systemImage: "xmark.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(ToolButtonStyle())
-
-                Divider().overlay(Color.white.opacity(0.08))
-
-                comfortControls
-
-                Divider().overlay(Color.white.opacity(0.08))
-
-                phoneRemoteControls
-
-                Toggle("Restore on login", isOn: $model.launchAtLogin)
-                    .toggleStyle(.switch)
-                    .onChange(of: model.launchAtLogin) { _, _ in
-                        model.toggleLaunchAtLogin()
-                    }
-
-                Text(model.status)
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .padding(.top, 8)
             }
+
+            Toggle("Restore on login", isOn: $model.launchAtLogin)
+                .toggleStyle(.switch)
+                .onChange(of: model.launchAtLogin) { _, _ in
+                    model.toggleLaunchAtLogin()
+                }
+
+            Text(model.status)
+                .font(.callout)
+                .foregroundStyle(.white.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .panelStyle(width: 305)
+        .panelStyle(width: 335)
+    }
+
+    private var comfortPanel: some View {
+        comfortControls
+            .panelStyle(width: 300)
+    }
+
+    private var phoneRemotePanel: some View {
+        phoneRemoteControls
+            .panelStyle(width: 335)
     }
 
     private var comfortControls: some View {
@@ -257,7 +266,7 @@ struct ContentView: View {
             if model.phoneRemoteEnabled {
                 HStack(alignment: .top, spacing: 10) {
                     QRCodeView(text: model.remoteURL)
-                        .frame(width: 88, height: 88)
+                        .frame(width: 96, height: 96)
                         .opacity(model.remoteURL.isEmpty ? 0.25 : 1)
 
                     VStack(alignment: .leading, spacing: 8) {

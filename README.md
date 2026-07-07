@@ -51,7 +51,7 @@ To create a local universal app bundle and DMG installer:
 ```sh
 CONFIG=debug scripts/build-release.sh
 open "dist/Resolution Mapper.app"
-open "dist/ResolutionMapper-v1.5-macos-universal.dmg"
+open "dist/ResolutionMapper-v1.5.1-macos-universal.dmg"
 ```
 
 ## Attribution
