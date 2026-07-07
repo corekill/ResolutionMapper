@@ -16,6 +16,7 @@ final class DisplayMapperModel: ObservableObject {
     @Published var softwareDimmingEnabled = false
     @Published var softwareDimmingAmount = 0.35
     @Published var selectedDimmingDisplayID: CGDirectDisplayID?
+    @Published var selectedDisplayMaxNits = 250
     @Published var phoneRemoteEnabled = false
     @Published var remoteURL = ""
     @Published var remotePairingDeviceName = ""
@@ -34,10 +35,12 @@ final class DisplayMapperModel: ObservableObject {
     private let savedMappingKey = "savedMapping"
     private let monitorMappingsKey = "monitorMappings"
     private let softwareDimmingAmountsKey = "softwareDimmingAmounts"
+    private let displayMaxNitsKey = "displayMaxNits"
     private let selectedDimmingDisplayKey = "selectedDimmingDisplayKey"
     private let authorizedRemoteDevicesKey = "authorizedRemoteDevices"
     private let launchAgentPath = "\(NSHomeDirectory())/Library/LaunchAgents/com.codex.resolution-mapper.plist"
     private var displayDimmingAmounts: [String: Double] = [:]
+    private var displayMaxNits: [String: Int] = [:]
     private var authorizedRemoteDevices: [RemoteDevice] = []
 
     init() {
@@ -76,6 +79,14 @@ final class DisplayMapperModel: ObservableObject {
 
     var requestedHiDPI: Bool {
         useCustomResolution ? useHiDPI : selectedPreset.hiDPI
+    }
+
+    var selectedEffectiveBrightnessPercent: Int {
+        effectiveBrightnessPercent(for: softwareDimmingEnabled ? softwareDimmingAmount : 0)
+    }
+
+    var selectedEffectiveNits: Int {
+        effectiveNits(maxNits: selectedDisplayMaxNits, dimmingAmount: softwareDimmingEnabled ? softwareDimmingAmount : 0)
     }
 
     func refreshDisplays() {
@@ -225,8 +236,9 @@ final class DisplayMapperModel: ObservableObject {
         defaults.set(softwareDimmingEnabled, forKey: "softwareDimmingEnabled")
         defaults.set(softwareDimmingAmount, forKey: "softwareDimmingAmount")
         applySoftwareDimming()
+        showBrightnessHUD()
         status = softwareDimmingEnabled
-            ? "Software dimming \(Int((softwareDimmingAmount * 100).rounded()))%."
+            ? "Brightness \(selectedEffectiveBrightnessPercent)% (~\(selectedEffectiveNits) nits)."
             : "Software dimming off."
     }
 
@@ -242,11 +254,27 @@ final class DisplayMapperModel: ObservableObject {
         if let display = dimmingDisplays.first(where: { $0.id == id }) {
             defaults.set(display.identityKey, forKey: selectedDimmingDisplayKey)
             softwareDimmingAmount = dimmingAmount(for: display)
+            selectedDisplayMaxNits = maxNits(for: display)
         }
     }
 
     func dimmingAmount(for display: DisplayItem) -> Double {
         displayDimmingAmounts[display.identityKey] ?? 0
+    }
+
+    func maxNits(for display: DisplayItem) -> Int {
+        displayMaxNits[display.identityKey] ?? defaultMaxNits(for: display)
+    }
+
+    func setSelectedDisplayMaxNits(_ value: Int) {
+        guard let display = selectedDimmingDisplay else {
+            return
+        }
+        let clamped = clamp(value, min: 80, max: 2_000)
+        selectedDisplayMaxNits = clamped
+        displayMaxNits[display.identityKey] = clamped
+        saveDisplayMaxNits()
+        showBrightnessHUD()
     }
 
     func authorizePhoneRemote(code: String) {
@@ -553,6 +581,7 @@ final class DisplayMapperModel: ObservableObject {
         softwareDimmingEnabled = defaults.object(forKey: "softwareDimmingEnabled") as? Bool ?? false
         softwareDimmingAmount = defaults.object(forKey: "softwareDimmingAmount") as? Double ?? 0.35
         displayDimmingAmounts = loadDimmingAmounts()
+        displayMaxNits = loadDisplayMaxNits()
         if displayDimmingAmounts.isEmpty, let selected = selectedDimmingDisplay {
             displayDimmingAmounts[selected.identityKey] = softwareDimmingAmount
             saveDimmingAmounts()
@@ -682,6 +711,7 @@ final class DisplayMapperModel: ObservableObject {
            dimmingDisplays.contains(where: { $0.id == selectedDimmingDisplayID }) {
             if let display = selectedDimmingDisplay {
                 softwareDimmingAmount = dimmingAmount(for: display)
+                selectedDisplayMaxNits = maxNits(for: display)
             }
             return
         }
@@ -690,6 +720,7 @@ final class DisplayMapperModel: ObservableObject {
            let display = dimmingDisplays.first(where: { $0.identityKey == storedKey }) {
             selectedDimmingDisplayID = display.id
             softwareDimmingAmount = dimmingAmount(for: display)
+            selectedDisplayMaxNits = maxNits(for: display)
             return
         }
 
@@ -698,6 +729,7 @@ final class DisplayMapperModel: ObservableObject {
         if let fallback {
             defaults.set(fallback.identityKey, forKey: selectedDimmingDisplayKey)
             softwareDimmingAmount = dimmingAmount(for: fallback)
+            selectedDisplayMaxNits = maxNits(for: fallback)
         }
     }
 
@@ -721,6 +753,48 @@ final class DisplayMapperModel: ObservableObject {
         if let data = try? JSONEncoder().encode(displayDimmingAmounts) {
             defaults.set(data, forKey: softwareDimmingAmountsKey)
         }
+    }
+
+    private func loadDisplayMaxNits() -> [String: Int] {
+        guard let data = defaults.data(forKey: displayMaxNitsKey),
+              let values = try? JSONDecoder().decode([String: Int].self, from: data) else {
+            return [:]
+        }
+        return values
+    }
+
+    private func saveDisplayMaxNits() {
+        if let data = try? JSONEncoder().encode(displayMaxNits) {
+            defaults.set(data, forKey: displayMaxNitsKey)
+        }
+    }
+
+    private func defaultMaxNits(for display: DisplayItem) -> Int {
+        display.isBuiltIn ? 500 : 250
+    }
+
+    private func effectiveBrightnessPercent(for dimmingAmount: Double) -> Int {
+        let brightness = 1 - clamp(dimmingAmount, min: 0, max: 0.92)
+        return clamp(Int((brightness * 100).rounded()), min: 0, max: 100)
+    }
+
+    private func effectiveNits(maxNits: Int, dimmingAmount: Double) -> Int {
+        let brightness = Double(effectiveBrightnessPercent(for: dimmingAmount)) / 100
+        return clamp(Int((Double(maxNits) * brightness).rounded()), min: 0, max: 2_000)
+    }
+
+    private func showBrightnessHUD() {
+        guard let display = selectedDimmingDisplay else {
+            return
+        }
+
+        let dimmingAmount = softwareDimmingEnabled ? dimmingAmount(for: display) : 0
+        BrightnessHUDController.shared.show(
+            displayID: display.id,
+            displayName: display.name,
+            percent: effectiveBrightnessPercent(for: dimmingAmount),
+            nits: effectiveNits(maxNits: maxNits(for: display), dimmingAmount: dimmingAmount)
+        )
     }
 
     private func remoteState() -> RemoteControlState {

@@ -243,10 +243,24 @@ struct ContentView: View {
                 ), in: 0...0.85)
                 .disabled(!model.softwareDimmingEnabled)
 
-                Text("\(Int((model.softwareDimmingAmount * 100).rounded()))%")
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("\(model.selectedEffectiveBrightnessPercent)%")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.72))
+                    Text("~\(model.selectedEffectiveNits) nits")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                .frame(width: 62, alignment: .trailing)
+            }
+
+            Stepper(value: Binding(
+                get: { model.selectedDisplayMaxNits },
+                set: { model.setSelectedDisplayMaxNits($0) }
+            ), in: 80...2000, step: 10) {
+                Text("Panel max \(model.selectedDisplayMaxNits) nits")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.62))
-                    .frame(width: 34, alignment: .trailing)
             }
         }
     }
