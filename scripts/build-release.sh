@@ -6,7 +6,7 @@ APP_NAME="Resolution Mapper"
 PRODUCT="ResolutionMapper"
 CONFIG="${CONFIG:-debug}"
 DIST="$ROOT/dist"
-VERSION="${VERSION:-1.3}"
+VERSION="${VERSION:-1.4}"
 DMG_NAME="$PRODUCT-v$VERSION-macos-universal"
 BUILD_ROOT="$(mktemp -d /tmp/resolutionmapper-release.XXXXXX)"
 APP="$BUILD_ROOT/$APP_NAME.app"
@@ -30,6 +30,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 /Library/Developer/CommandLineTools/usr/bin/swift-build \
   --disable-sandbox \
+  --disable-index-store \
   --build-system native \
   --configuration "$CONFIG" \
   --triple arm64-apple-macosx14.0 \
@@ -37,6 +38,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 /Library/Developer/CommandLineTools/usr/bin/swift-build \
   --disable-sandbox \
+  --disable-index-store \
   --build-system native \
   --configuration "$CONFIG" \
   --triple x86_64-apple-macosx14.0 \
@@ -111,6 +113,7 @@ hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$FINAL_DMG"
 hdiutil verify "$FINAL_DMG"
 rm -f "$RW_DMG"
 ditto --noextattr "$APP" "$DIST/$APP_NAME.app"
+clean_app_metadata "$DIST/$APP_NAME.app"
 
 echo "$DIST/$APP_NAME.app"
 echo "$FINAL_DMG"

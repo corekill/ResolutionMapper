@@ -13,22 +13,33 @@ final class DisplayMapperModel: ObservableObject {
     @Published var useCustomResolution = false
     @Published var useHiDPI = false
     @Published var launchAtLogin = true
+    @Published var softwareDimmingEnabled = false
+    @Published var softwareDimmingAmount = 0.35
+    @Published var phoneRemoteEnabled = false
+    @Published var remoteURL = ""
     @Published var status = "Ready"
     @Published var isBusy = false
     @Published var sparkleBurst = false
 
     private var virtualDisplays: [CGDirectDisplayID: VirtualDisplayWrapper] = [:]
+    private let dimmer = ScreenDimmer()
+    private var remoteServer: RemoteControlServer?
     private var monitorTimer: Timer?
     private var lastHadExternalTarget = false
     private var displayMonitoringReady = false
     private let defaults = UserDefaults.standard
     private let savedMappingKey = "savedMapping"
     private let monitorMappingsKey = "monitorMappings"
+    private let remoteTokenKey = "phoneRemoteToken"
     private let launchAgentPath = "\(NSHomeDirectory())/Library/LaunchAgents/com.codex.resolution-mapper.plist"
 
     init() {
         refreshDisplays()
         restoreUIState()
+        applySoftwareDimming()
+        if phoneRemoteEnabled {
+            startPhoneRemote()
+        }
         setupNotifications()
         startDisplayMonitoring()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -81,6 +92,7 @@ final class DisplayMapperModel: ObservableObject {
         }
 
         handleExternalDisplayPresence()
+        dimmer.refreshScreens()
     }
 
     func applySelectedMapping() {
@@ -190,6 +202,60 @@ final class DisplayMapperModel: ObservableObject {
         } catch {
             status = error.localizedDescription
         }
+    }
+
+    func setSoftwareDimming(enabled: Bool, amount: Double? = nil) {
+        softwareDimmingEnabled = enabled
+        if let amount {
+            softwareDimmingAmount = clamp(amount, min: 0, max: 0.92)
+        }
+        defaults.set(softwareDimmingEnabled, forKey: "softwareDimmingEnabled")
+        defaults.set(softwareDimmingAmount, forKey: "softwareDimmingAmount")
+        applySoftwareDimming()
+        status = softwareDimmingEnabled
+            ? "Software dimming \(Int((softwareDimmingAmount * 100).rounded()))%."
+            : "Software dimming off."
+    }
+
+    func setSoftwareDimmingAmount(_ amount: Double) {
+        setSoftwareDimming(enabled: softwareDimmingEnabled, amount: amount)
+    }
+
+    func setPhoneRemoteEnabled(_ enabled: Bool) {
+        phoneRemoteEnabled = enabled
+        defaults.set(enabled, forKey: "phoneRemoteEnabled")
+
+        if enabled {
+            startPhoneRemote()
+        } else {
+            stopPhoneRemote()
+            status = "Phone remote stopped."
+        }
+    }
+
+    func copyRemoteURL() {
+        guard !remoteURL.isEmpty else {
+            status = "Phone remote is not running."
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(remoteURL, forType: .string)
+        status = "Phone remote link copied."
+    }
+
+    func setSystemVolume(_ volume: Int) {
+        let clampedVolume = clamp(volume, min: 0, max: 100)
+        var error: NSDictionary?
+        let script = NSAppleScript(source: "set volume output volume \(clampedVolume)")
+        script?.executeAndReturnError(&error)
+
+        if let error {
+            status = "Volume failed: \(error[NSAppleScript.errorMessage] ?? "AppleScript error")."
+        }
+    }
+
+    func performMediaAction(_ action: RemoteMediaAction) {
+        MediaKeyController.perform(action)
     }
 
     func triggerEasterEgg() {
@@ -429,6 +495,9 @@ final class DisplayMapperModel: ObservableObject {
 
     private func restoreUIState() {
         launchAtLogin = defaults.object(forKey: "launchAtLogin") as? Bool ?? true
+        softwareDimmingEnabled = defaults.object(forKey: "softwareDimmingEnabled") as? Bool ?? false
+        softwareDimmingAmount = defaults.object(forKey: "softwareDimmingAmount") as? Double ?? 0.35
+        phoneRemoteEnabled = defaults.object(forKey: "phoneRemoteEnabled") as? Bool ?? false
         if let mapping = loadLastMapping() {
             selectedTargetID = resolveTargetID(for: mapping) ?? mapping.targetDisplayID
             customWidth = "\(mapping.width)"
@@ -446,9 +515,83 @@ final class DisplayMapperModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshDisplays()
+                self?.applySoftwareDimming()
                 self?.applyLastMapping()
             }
         }
+    }
+
+    private func applySoftwareDimming() {
+        dimmer.set(enabled: softwareDimmingEnabled, amount: softwareDimmingAmount)
+    }
+
+    private func startPhoneRemote() {
+        if remoteServer != nil {
+            return
+        }
+
+        let token = remoteToken()
+        let server = RemoteControlServer(
+            token: token,
+            stateProvider: { [weak self] in
+                RemoteControlState(
+                    dimmingEnabled: self?.softwareDimmingEnabled ?? false,
+                    dimmingAmount: self?.softwareDimmingAmount ?? 0,
+                    volume: self?.currentSystemVolume() ?? 0
+                )
+            },
+            dimmingHandler: { [weak self] enabled, amount in
+                self?.setSoftwareDimming(enabled: enabled, amount: amount)
+            },
+            volumeHandler: { [weak self] volume in
+                self?.setSystemVolume(volume)
+            },
+            mediaHandler: { [weak self] action in
+                self?.performMediaAction(action)
+            }
+        )
+        server.onEndpointChanged = { [weak self] url in
+            self?.remoteURL = url
+        }
+        server.onStatusChanged = { [weak self] message in
+            self?.status = message
+        }
+
+        do {
+            try server.start()
+            remoteServer = server
+            remoteURL = server.urlString()
+            status = "Phone remote starting."
+        } catch {
+            remoteServer = nil
+            remoteURL = ""
+            phoneRemoteEnabled = false
+            defaults.set(false, forKey: "phoneRemoteEnabled")
+            status = "Phone remote failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func stopPhoneRemote() {
+        remoteServer?.stop()
+        remoteServer = nil
+        remoteURL = ""
+    }
+
+    private func remoteToken() -> String {
+        if let token = defaults.string(forKey: remoteTokenKey), !token.isEmpty {
+            return token
+        }
+
+        let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        defaults.set(token, forKey: remoteTokenKey)
+        return token
+    }
+
+    private func currentSystemVolume() -> Int {
+        var error: NSDictionary?
+        let script = NSAppleScript(source: "output volume of (get volume settings)")
+        let result = script?.executeAndReturnError(&error)
+        return clamp(Int(result?.int32Value ?? 0), min: 0, max: 100)
     }
 
     private func startDisplayMonitoring() {
@@ -532,6 +675,10 @@ final class DisplayMapperModel: ObservableObject {
     }
 
     private func clamp(_ value: Int, min: Int, max: Int) -> Int {
+        Swift.max(min, Swift.min(max, value))
+    }
+
+    private func clamp(_ value: Double, min: Double, max: Double) -> Double {
         Swift.max(min, Swift.min(max, value))
     }
 

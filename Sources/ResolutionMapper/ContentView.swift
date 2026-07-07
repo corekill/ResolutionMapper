@@ -176,6 +176,14 @@ struct ContentView: View {
             }
             .buttonStyle(ToolButtonStyle())
 
+            Divider().overlay(Color.white.opacity(0.08))
+
+            comfortControls
+
+            Divider().overlay(Color.white.opacity(0.08))
+
+            phoneRemoteControls
+
             Toggle("Restore on login", isOn: $model.launchAtLogin)
                 .toggleStyle(.switch)
                 .onChange(of: model.launchAtLogin) { _, _ in
@@ -189,7 +197,65 @@ struct ContentView: View {
 
             Spacer()
         }
-        .panelStyle(width: 245)
+        .panelStyle(width: 285)
+    }
+
+    private var comfortControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Comfort")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(0.8))
+
+            Toggle("Dim below minimum", isOn: Binding(
+                get: { model.softwareDimmingEnabled },
+                set: { model.setSoftwareDimming(enabled: $0) }
+            ))
+            .toggleStyle(.switch)
+
+            HStack {
+                Slider(value: Binding(
+                    get: { model.softwareDimmingAmount },
+                    set: { model.setSoftwareDimmingAmount($0) }
+                ), in: 0...0.85)
+                .disabled(!model.softwareDimmingEnabled)
+
+                Text("\(Int((model.softwareDimmingAmount * 100).rounded()))%")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .frame(width: 34, alignment: .trailing)
+            }
+        }
+    }
+
+    private var phoneRemoteControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Phone Remote")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(0.8))
+
+            Toggle("LAN web remote", isOn: Binding(
+                get: { model.phoneRemoteEnabled },
+                set: { model.setPhoneRemoteEnabled($0) }
+            ))
+            .toggleStyle(.switch)
+
+            if model.phoneRemoteEnabled {
+                Text(model.remoteURL.isEmpty ? "Starting..." : model.remoteURL)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                Button {
+                    model.copyRemoteURL()
+                } label: {
+                    Label("Copy Link", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ToolButtonStyle())
+                .disabled(model.remoteURL.isEmpty)
+            }
+        }
     }
 
     private var footer: some View {

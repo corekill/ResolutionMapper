@@ -9,7 +9,7 @@ struct ResolutionMapperApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 860, minHeight: 560)
+                .frame(minWidth: 980, minHeight: 640)
                 .background(WindowAccessor { window in
                     MainWindowController.shared.attach(window)
                 })
@@ -26,6 +26,11 @@ struct ResolutionMapperApp: App {
             }
             Button("Unmap Selected Monitor") {
                 model.unmapSelected()
+            }
+            if model.phoneRemoteEnabled {
+                Button("Copy Phone Remote Link") {
+                    model.copyRemoteURL()
+                }
             }
             Divider()
             Button("Quit") {
